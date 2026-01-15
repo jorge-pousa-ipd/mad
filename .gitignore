@@ -1,0 +1,50 @@
+# Git ignore for a Java (Maven) Spring Boot project on Windows
+
+# Build output
+/target/
+/out/
+
+# Maven
+dependency-reduced-pom.xml
+release.properties
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+.mvn/timing.properties
+
+# IntelliJ IDEA
+/.idea/
+*.iml
+*.iws
+workspace.xml
+tasks.xml
+dictionaries/
+captures/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# VS Code
+.vscode/
+
+# Logs and temp
+*.log
+logs/
+tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Compiled / packaged files
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip

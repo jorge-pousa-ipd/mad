@@ -1,0 +1,17 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: "jdbc:sqlserver://;serverName=10.15.0.89;databaseName=InfoPro_MAD_DEV;encrypt=false;trustServerCertificate=true"
+    username: infopro_mad
+    password: infopro_mad
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        default_schema: data_analysis
