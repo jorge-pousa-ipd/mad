@@ -1,9 +1,9 @@
 package com.example.rta.service;
 
-import com.example.rta.model.ContentEditorialSentence;
-import com.example.rta.model.ContentEditorialSentenceRepository;
-import com.example.rta.model.Libelle;
-import com.example.rta.model.LibelleRepository;
+import com.example.rta.model.entity.ContentEditorialSentence;
+import com.example.rta.model.repository.ContentEditorialSentenceRepository;
+import com.example.rta.model.entity.Libelle;
+import com.example.rta.model.repository.LibelleRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;

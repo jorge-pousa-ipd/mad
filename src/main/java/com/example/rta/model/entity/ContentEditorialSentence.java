@@ -1,39 +1,28 @@
-package com.example.rta.model;
+package com.example.rta.model.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "cont_editorial_sentence")
 public class ContentEditorialSentence {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	@Column(name = "Id", nullable = false)
+	@Column(nullable = false)
 	private Integer id;
 
-	@Column(name = "sentence", length = 1000, nullable = false)
+	@Column(nullable = false)
 	private String sentence;
 
-	@Column(name = "table_name", length = 30, nullable = false)
+	@Column(nullable = false)
 	private String tableName;
 
-	@Column(name = "language", length = 5)
 	private String language;
 
 	protected ContentEditorialSentence() {
 	}
-
-	// Convenience constructor for creating new instances (do NOT accept id).
-	public ContentEditorialSentence(String sentence, String tableName, String language) {
-		this.sentence = sentence;
-		this.tableName = tableName;
-		this.language = language;
-	}
-
 
 	public Integer getId() {
 		return id;

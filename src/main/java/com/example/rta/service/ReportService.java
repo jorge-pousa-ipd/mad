@@ -1,7 +1,7 @@
 package com.example.rta.service;
 
-import com.example.rta.model.ContentEditorialSentenceRepository;
-import com.example.rta.model.LibelleRepository;
+import com.example.rta.model.repository.ContentEditorialSentenceRepository;
+import com.example.rta.model.repository.LibelleRepository;
 import org.springframework.stereotype.Service;
 
 @Service

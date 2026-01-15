@@ -27,20 +27,6 @@ captures/
 .project
 .settings/
 
-# VS Code
-.vscode/
-
-# Logs and temp
-*.log
-logs/
-tmp/
-temp/
-
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
 # Compiled / packaged files
 *.class
 *.jar
@@ -48,3 +34,6 @@ desktop.ini
 *.ear
 *.nar
 *.zip
+
+# csv files
+*.csv

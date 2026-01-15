@@ -1,4 +1,4 @@
-package com.example.rta.model;
+package com.example.rta.model.entity;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -13,10 +13,10 @@ public class Libelle {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	@Column(name = "Id", nullable = false)
+	@Column(nullable = false)
 	private Integer id;
 
-	@Column(name = "libelle_original", nullable = false)
+	@Column(nullable = false)
 	private String libelleOriginal;
 
 	protected Libelle() {
