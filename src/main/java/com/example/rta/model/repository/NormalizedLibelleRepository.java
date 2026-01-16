@@ -1,6 +1,6 @@
 package com.example.rta.model.repository;
 
-import com.example.rta.model.NormalizedLibelle;
+import com.example.rta.model.entity.NormalizedLibelle;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

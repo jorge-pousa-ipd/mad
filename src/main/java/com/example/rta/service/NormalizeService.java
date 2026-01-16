@@ -1,6 +1,6 @@
 package com.example.rta.service;
 
-import com.example.rta.model.entity.ContentEditorialSentence;
+import com.example.rta.model.entity.ContEditorialSentence;
 import com.example.rta.model.repository.ContentEditorialSentenceRepository;
 import com.example.rta.model.entity.Libelle;
 import com.example.rta.model.repository.LibelleRepository;
@@ -19,14 +19,15 @@ import java.nio.file.StandardOpenOption;
 import java.text.Normalizer;
 import java.util.regex.Pattern;
 
+import static util.Constants.PAGE_SIZE;
+import static util.Constants.SEPARATOR;
+
 @Service
 public class NormalizeService {
-	private static final Integer PAGE_SIZE = 25000;
 	private static final Pattern DIACRITICS = Pattern.compile("\\p{M}+");
 
-	private static final String SEPARATOR = ";";
-	private static final String LIBELLE_OUT = "normalized_libelles.csv";
-	private static final String CONT_EDITORIAL_OUT = "normalized_cont_editorial.csv";
+	private static final String LIBELLE_OUT = "normalized_libelle.csv";
+	private static final String CONT_EDITORIAL_OUT = "normalized_cont_editorial_sentence.csv";
 
 	private final ContentEditorialSentenceRepository contentEditorialSentenceRepository;
 	private final LibelleRepository libelleRepository;
@@ -84,20 +85,20 @@ public class NormalizeService {
 			writer.newLine();
 
 			int page = 0;
-			Page<ContentEditorialSentence> contentEditorialServicePage;
+			Page<ContEditorialSentence> contentEditorialServicePage;
 
 			do {
 				PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
 				contentEditorialServicePage = contentEditorialSentenceRepository.findAll(pageable);
 
-				for (ContentEditorialSentence contentEditorialSentence : contentEditorialServicePage.getContent()) {
-					String normalized = normalizeSentence(contentEditorialSentence.getSentence());
+				for (ContEditorialSentence contEditorialSentence : contentEditorialServicePage.getContent()) {
+					String normalized = normalizeSentence(contEditorialSentence.getSentence());
 
 					// count words
 					int wordCount = normalized.isBlank() ? 0 : normalized.split("\\s+").length;
 
 					// write CSV line separated by semicolons; no sanitization as requested
-					String line = contentEditorialSentence.getId() + SEPARATOR + normalized + SEPARATOR + wordCount;
+					String line = contEditorialSentence.getId() + SEPARATOR + normalized + SEPARATOR + wordCount;
 					writer.write(line);
 					writer.newLine();
 				}
@@ -128,6 +129,6 @@ public class NormalizeService {
 		// { and } are special cases; they indicate user typos
 		// ' is another special character in French, won't be replaces for a blank space
 
-		return result;
+		return result.toLowerCase();
 	}
 }

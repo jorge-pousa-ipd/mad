@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 
 @Entity
-public class ContentEditorialSentence {
+public class ContEditorialSentence {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(nullable = false)
@@ -21,7 +21,7 @@ public class ContentEditorialSentence {
 
 	private String language;
 
-	protected ContentEditorialSentence() {
+	protected ContEditorialSentence() {
 	}
 
 	public Integer getId() {

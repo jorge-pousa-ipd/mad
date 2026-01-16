@@ -1,4 +1,4 @@
-package com.example.rta.model;
+package com.example.rta.model.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,7 +17,7 @@ public class NormalizedContEditorialSentence {
 
 	private String originalSentence;
 
-	protected NormalizedContEditorialSentence() {
+	public NormalizedContEditorialSentence() {
 	}
 
 	public Integer getId() {
