@@ -18,17 +18,14 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.*;
 
 import static util.Constants.PAGE_SIZE;
 import static util.Constants.SEPARATOR;
 
 @Service
 public class ReportService {
-	private static final int MAX_CONCURRENT_TASKS = 20;
+	private static final int MAX_CONCURRENT_TASKS = 50;
 
 	private static final String OCCURRENCES_OUT = "ocurrences_report.csv";
 
@@ -36,7 +33,7 @@ public class ReportService {
 	private final NormalizedLibelleRepository normalizedLibelleRepository;
 
 	ReportService(NormalizedContEditorialSentenceRepository normalizedContEditorialSentenceRepository,
-			  NormalizedLibelleRepository normalizedLibelleRepository) {
+				  NormalizedLibelleRepository normalizedLibelleRepository) {
 		this.normalizedContEditorialSentenceRepository = normalizedContEditorialSentenceRepository;
 		this.normalizedLibelleRepository = normalizedLibelleRepository;
 	}
@@ -47,15 +44,13 @@ public class ReportService {
 		Path out = Paths.get(OCCURRENCES_OUT);
 
 		try (BufferedWriter writer = Files.newBufferedWriter(out, StandardCharsets.UTF_8,
-				StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-			// header (semicolon-separated) - added word_count column
+				StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+			 ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()
+		) {
+			Semaphore limiter = new Semaphore(MAX_CONCURRENT_TASKS);
+
 			writer.write("libelleId;occurrences;cont_editorial_ids");
 			writer.newLine();
-
-			// create a fixed pool of virtual threads
-			ExecutorService exec =Executors.newVirtualThreadPerTaskExecutor();
-			// semaphore: limit tasks in flight to avoid unbounded in-memory queueing
-			Semaphore sem = new Semaphore(MAX_CONCURRENT_TASKS);
 
 			int page = 0;
 			Page<NormalizedLibelle> normalizedLibellePage;
@@ -64,63 +59,45 @@ public class ReportService {
 				PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
 				normalizedLibellePage = normalizedLibelleRepository.findAll(pageable);
 
-				// collect futures for submitted tasks (minimal change: use CompletableFuture)
-				List<CompletableFuture<Void>> futures = new ArrayList<>();
+				List<Future<String>> tasks = new ArrayList<>();
 
 				for (NormalizedLibelle normalizedLibelle : normalizedLibellePage.getContent()) {
-					sem.acquire();
+					limiter.acquire();
 
-					CompletableFuture<Void> f = CompletableFuture.runAsync(() -> {
+					tasks.add(exec.submit(() -> {
 						try {
-							String normalizedLibelleSentence = normalizedLibelle.getNormalizedLibelle();
-							if (normalizedLibelleSentence == null) normalizedLibelleSentence = "";
-
-							List<NormalizedSentenceDto> matches = new ArrayList<>();
-							for (NormalizedSentenceDto s : normalizedContEditorialSentenceList) {
-								if (normalizedLibelleSentence.contains(s.normalizedSentence())) {
-									matches.add(s);
-								}
-							}
-
-							String ids = removeDuplicateMatchesAndGetIds(matches);
-							int count = ids.isEmpty() ? 0 : ids.split(",").length;
-							String line = normalizedLibelle.getId() + SEPARATOR + count + SEPARATOR + ids;
-
-							// synchronized write to the single writer
-							// TODO: try with an exclusive thread for writing
-							synchronized (writer) {
-								try {
-									writer.write(line);
-									writer.newLine();
-								} catch (IOException e) {
-									throw new RuntimeException(e);
-								}
-							}
+							return countSentenceOccurrences(normalizedLibelle, normalizedContEditorialSentenceList);
 						} finally {
-							// release permit so main thread can submit more tasks
-							sem.release();
+							limiter.release();
 						}
-					}, exec);
-					futures.add(f);
+					}));
 				}
 
-				// wait for all futures of this page to complete before advancing
-				CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+				// waits for the futures and writes the output
+				writeOccurrencesOutput(tasks, writer);
 
-				page++;
-				writer.flush();
 			} while (normalizedLibellePage.hasNext());
 
-			// shutdown and wait
-			exec.shutdown();
-
-
-		} catch (IOException e) {
-			throw new RuntimeException("Failed to write normalized Libelle file", e);
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			throw new RuntimeException("Interrupted while counting occurrences", e);
+		} catch (Exception e) {
+			throw new RuntimeException("Error counting occurrences", e);
 		}
+	}
+
+	private String countSentenceOccurrences(NormalizedLibelle normalizedLibelle,
+											List<NormalizedSentenceDto> normalizedContEditorialSentenceList) {
+		String normalizedLibelleSentence = normalizedLibelle.getNormalizedLibelle();
+		if (normalizedLibelleSentence == null) normalizedLibelleSentence = "";
+
+		List<NormalizedSentenceDto> matches = new ArrayList<>();
+		for (NormalizedSentenceDto s : normalizedContEditorialSentenceList) {
+			if (normalizedLibelleSentence.contains(s.normalizedSentence())) {
+				matches.add(s);
+			}
+		}
+
+		String ids = removeDuplicateMatchesAndGetIds(matches);
+		int count = ids.isEmpty() ? 0 : ids.split(",").length;
+		return normalizedLibelle.getId() + SEPARATOR + count + SEPARATOR + ids;
 	}
 
 	private String removeDuplicateMatchesAndGetIds(List<NormalizedSentenceDto> matches) {
@@ -157,5 +134,17 @@ public class ReportService {
 		}
 
 		return sb.toString();
+	}
+
+	private void writeOccurrencesOutput(List<Future<String>> tasks, BufferedWriter writer)
+			throws ExecutionException, InterruptedException, IOException {
+		StringBuilder batch = new StringBuilder(64_000);
+
+		for (Future<String> f : tasks) {
+			batch.append(f.get()).append('\n');
+		}
+
+		writer.write(batch.toString());
+		writer.flush();
 	}
 }
