@@ -15,6 +15,13 @@ public class LinesController {
 		this.reportService = reportService;
 	}
 
+	@PutMapping("/generateBlocContenuRelationships")
+	public Integer generateBlocContenuRelationships() throws Exception {
+		reportService.generateBlocContenuRelationships();
+
+		return 0;
+	}
+
 	@PutMapping("/countOccurrences")
 	public Integer countOccurrences() {
 		reportService.countOccurrences();
@@ -35,5 +42,4 @@ public class LinesController {
 
 		return 0;
 	}
-
 }

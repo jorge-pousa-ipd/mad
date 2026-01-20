@@ -19,7 +19,7 @@ public class ReportServiceTest {
 
 	@Test
 	public void testEmptyList() throws Exception {
-		ReportService svc = new ReportService(null, null);
+		ReportService svc = new ReportService(null, null, null, null);
 		List<NormalizedSentenceDto> matches = new ArrayList<>();
 		String res = invokePrivateRemove(svc, matches);
 		assertEquals("", res);
@@ -27,7 +27,7 @@ public class ReportServiceTest {
 
 	@Test
 	public void testSingleWithId() throws Exception {
-		ReportService svc = new ReportService(null, null);
+		ReportService svc = new ReportService(null, null, null, null);
 		List<NormalizedSentenceDto> matches = List.of(new NormalizedSentenceDto(42, "hello"));
 		String res = invokePrivateRemove(svc, matches);
 		assertEquals("42", res);
@@ -35,7 +35,7 @@ public class ReportServiceTest {
 
 	@Test
 	public void testContainedMatchesFiltered() throws Exception {
-		ReportService svc = new ReportService(null, null);
+		ReportService svc = new ReportService(null, null, null, null);
 		// two matches, one contained in the other: keep only the longer (id=2)
 		NormalizedSentenceDto shortOne = new NormalizedSentenceDto(1, "pedale de frein");
 		NormalizedSentenceDto longOne = new NormalizedSentenceDto(2, "appuyer sur la pedale de frein");
@@ -46,7 +46,7 @@ public class ReportServiceTest {
 
 	@Test
 	public void testMultipleNonOverlappingKeptInOrder() throws Exception {
-		ReportService svc = new ReportService(null, null);
+		ReportService svc = new ReportService(null, null, null, null);
 		NormalizedSentenceDto a = new NormalizedSentenceDto(1, "bbbb");
 		NormalizedSentenceDto b = new NormalizedSentenceDto(2, "aaaaa");
 		NormalizedSentenceDto c = new NormalizedSentenceDto(3, "ccx");
