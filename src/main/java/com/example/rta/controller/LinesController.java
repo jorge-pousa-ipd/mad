@@ -22,9 +22,9 @@ public class LinesController {
 		return 0;
 	}
 
-	@PutMapping("/countOccurrences")
-	public Integer countOccurrences() {
-		reportService.countOccurrences();
+	@PutMapping("/generateSentencesRelationships")
+	public Integer generateSentencesRelationships() {
+		reportService.generateSentencesRelationships();
 
 		return 0;
 	}
@@ -32,6 +32,13 @@ public class LinesController {
 	@PutMapping("/normalizeLibelle")
 	public Integer normalizeLibelle() {
 		normalizeService.normalizeLibelle();
+
+		return 0;
+	}
+
+	@PutMapping("/normalizeLibelleExtra")
+	public Integer normalizeLibelleExtra() {
+		normalizeService.normalizeLibelleExtra();
 
 		return 0;
 	}

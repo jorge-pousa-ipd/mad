@@ -9,7 +9,7 @@
     <artifactId>rta-data</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>rta-data</name>
-    <description>Proyecto Spring Boot que consulta SQL Server y expone /items</description>
+    <description>Spring boot project for MAD</description>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -19,7 +19,6 @@
     </parent>
 
     <properties>
-        <!-- Java 21 es el estándar LTS para proyectos modernos en 2026 -->
         <java.version>21</java.version>
     </properties>
 

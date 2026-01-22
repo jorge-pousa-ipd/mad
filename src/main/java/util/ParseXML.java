@@ -29,4 +29,16 @@ public class ParseXML {
 
 		return result;
 	}
+
+	public static String trimAndLowerCaseAndRemoveLineBreaks(String input) {
+		if (input == null) {
+			return null;
+		}
+		// Remove line breaks and trim whitespace
+		return input
+				.replace('\u00A0', ' ')
+				.replaceAll("\\r?\\n", " ")
+				.trim()
+				.toLowerCase();
+	}
 }

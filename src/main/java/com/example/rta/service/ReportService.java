@@ -2,12 +2,9 @@ package com.example.rta.service;
 
 import com.example.rta.dto.NormalizedSentenceDto;
 import com.example.rta.model.entity.BlocContenu;
-import com.example.rta.model.entity.Libelle;
 import com.example.rta.model.entity.NormalizedLibelle;
-import com.example.rta.model.repository.BlocContenuRepository;
-import com.example.rta.model.repository.LibelleRepository;
-import com.example.rta.model.repository.NormalizedContEditorialSentenceRepository;
-import com.example.rta.model.repository.NormalizedLibelleRepository;
+import com.example.rta.model.entity.NormalizedLibelleExtra;
+import com.example.rta.model.repository.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -25,30 +22,37 @@ import java.util.concurrent.*;
 
 import static util.Constants.*;
 import static util.ParseXML.parseXml;
+import static util.ParseXML.trimAndLowerCaseAndRemoveLineBreaks;
 
 @Service
 public class ReportService {
 	private static final int MAX_CONCURRENT_TASKS = 25;
 
 	private static final String BLOC_CONTENU_OUT = "bloc_contenu_out.csv";
+	private static final String BLOC_CONTENU_NOT_FOUND = "bloc_contenu_not_found.csv";
 	private static final String OCCURRENCES_OUT = "ocurrences_report.csv";
 
+	private final Object blocContenuLock = new Object();
+	private final Object blocContenuNotFoundLock = new Object();
+	private final Object sentenceRelationshipLock = new Object();
+
 	private final BlocContenuRepository blocContenuRepository;
-	private final LibelleRepository libelleRepository;
 	private final NormalizedContEditorialSentenceRepository normalizedContEditorialSentenceRepository;
 	private final NormalizedLibelleRepository normalizedLibelleRepository;
+	private final NormalizedLibelleExtraRepository normalizedLibelleExtraRepository;
 
-	ReportService(BlocContenuRepository blocContenuRepository, LibelleRepository libelleRepository,
+	ReportService(BlocContenuRepository blocContenuRepository,
 				  NormalizedContEditorialSentenceRepository normalizedContEditorialSentenceRepository,
-				  NormalizedLibelleRepository normalizedLibelleRepository) {
+				  NormalizedLibelleRepository normalizedLibelleRepository,
+				  NormalizedLibelleExtraRepository normalizedLibelleExtraRepository) {
 		this.blocContenuRepository = blocContenuRepository;
-		this.libelleRepository = libelleRepository;
 		this.normalizedContEditorialSentenceRepository = normalizedContEditorialSentenceRepository;
 		this.normalizedLibelleRepository = normalizedLibelleRepository;
+		this.normalizedLibelleExtraRepository = normalizedLibelleExtraRepository;
 	}
 
 
-	public void countOccurrences() {
+	public void generateSentencesRelationships() {
 		List<NormalizedSentenceDto> normalizedContEditorialSentenceList = normalizedContEditorialSentenceRepository.findIdAndSentenceWithWordCountGreaterThan(4);
 
 		Path out = Paths.get(OCCURRENCES_OUT);
@@ -166,16 +170,26 @@ public class ReportService {
 	}
 
 
+	/**
+	 * Generate relationships between BlocContenu entries and normalized libelle / normalized libelle extra entries,
+	 * exporting the relationships result to a csv file.
+	 * csv file format: blocXmlId;libelleId;libelleExtraId
+	 */
 	public void generateBlocContenuRelationships() throws Exception {
 		Map<String, Integer> libelleMap = initializeLibelleMap();
+		Map<String, Integer> libelleExtraMap = initializeLibelleExtraMap();
 
 		Semaphore semaphore = new Semaphore(MAX_CONCURRENT_TASKS);
 
 		try (BufferedWriter writer = Files.newBufferedWriter(Path.of(BLOC_CONTENU_OUT), StandardOpenOption.CREATE,
-				StandardOpenOption.TRUNCATE_EXISTING
-		)) {
+				StandardOpenOption.TRUNCATE_EXISTING);
+			 BufferedWriter writerNotFound = Files.newBufferedWriter(Path.of(BLOC_CONTENU_NOT_FOUND), StandardOpenOption.CREATE,
+					 StandardOpenOption.TRUNCATE_EXISTING)) {
 			int blocPageIndex = 0;
 			Page<BlocContenu> blocPage;
+
+			writer.write("blocXmlId;libelleId;libelleExtraId");
+			writer.newLine();
 
 			try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
 				do {
@@ -189,12 +203,7 @@ public class ReportService {
 								List<String> parsedBlocXml = parseXml(b.getBlocxml());
 
 								for (String phrase : parsedBlocXml) {
-									Integer libelleId = libelleMap.get(phrase.trim());
-									String line = b.getId() + SEPARATOR + Objects.requireNonNullElse(libelleId, phrase + " NULL");
-									synchronized (writer) {
-										writer.write(line);
-										writer.newLine();
-									}
+									writeBlocContenuRelationship(b.getId(), phrase, writer, writerNotFound, libelleMap, libelleExtraMap);
 								}
 							} catch (Exception e) {
 								e.printStackTrace();
@@ -210,13 +219,52 @@ public class ReportService {
 		}
 	}
 
-	Map<String, Integer> initializeLibelleMap() throws Exception {
-		List<Libelle> list = libelleRepository.findAll();
+	private Map<String, Integer> initializeLibelleMap() {
+		List<NormalizedLibelle> list = normalizedLibelleRepository.findAll();
 		Map<String, Integer> map = new HashMap<>(list.size());
-		for (Libelle libelle : list) {
-			map.put(libelle.getLibelleOriginal().trim(), libelle.getId());
+		for (NormalizedLibelle libelle : list) {
+			map.put(trimAndLowerCaseAndRemoveLineBreaks(libelle.getOriginalLibelle()), libelle.getId());
 		}
 
 		return map;
+	}
+
+	private Map<String, Integer> initializeLibelleExtraMap() {
+		List<NormalizedLibelleExtra> list = normalizedLibelleExtraRepository.findAll();
+		Map<String, Integer> map = new HashMap<>(list.size());
+		for (NormalizedLibelleExtra libelle : list) {
+			map.put(trimAndLowerCaseAndRemoveLineBreaks(libelle.getOriginalLibelle()), libelle.getId());
+		}
+
+		return map;
+	}
+
+	private void writeBlocContenuRelationship(Integer blocXmlId, String phrase, BufferedWriter writer, BufferedWriter writerNotFound,
+											  Map<String, Integer> libelleMap, Map<String, Integer> libelleExtraMap) throws Exception {
+		phrase = trimAndLowerCaseAndRemoveLineBreaks(phrase);
+
+		Integer libelleId = libelleMap.get(phrase);
+		if (libelleId != null) {
+			synchronized (blocContenuLock) {
+				writer.write(blocXmlId + SEPARATOR + libelleId + SEPARATOR);
+				writer.newLine();
+			}
+			return;
+		}
+
+		libelleId = libelleExtraMap.get(phrase);
+		if (libelleId != null) {
+			synchronized (blocContenuLock) {
+				writer.write(blocXmlId + SEPARATOR + SEPARATOR + libelleId);
+				writer.newLine();
+			}
+			return;
+		}
+
+		// not found in either
+		synchronized (blocContenuNotFoundLock) {
+			writerNotFound.write(phrase);
+			writerNotFound.newLine();
+		}
 	}
 }
