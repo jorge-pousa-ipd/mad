@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.text.Normalizer;
 import java.util.regex.Pattern;
+import java.util.function.Function;
 
 import static util.Constants.PAGE_SIZE;
 import static util.Constants.SEPARATOR;
@@ -27,6 +28,7 @@ import static util.Constants.SEPARATOR;
 @Service
 public class NormalizeService {
 	private static final Pattern DIACRITICS = Pattern.compile("\\p{M}+");
+	private static final String COLUMN_HEADER = "id;normalized_libelle;word_count";
 
 	private static final String LIBELLE_OUT = "normalized_libelle.csv";
 	private static final String LIBELLE_EXTRA_OUT = "normalized_libelle_extra.csv";
@@ -51,30 +53,7 @@ public class NormalizeService {
 	 * csv file format: id;normalized_libelle;word_count
 	 */
 	public void normalizeLibelle() {
-		Path out = Paths.get(LIBELLE_OUT);
-
-		try (BufferedWriter writer = Files.newBufferedWriter(out, StandardCharsets.UTF_8,
-				StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-			writeCsvHeader(writer, "id;normalized_libelle;word_count");
-
-			int page = 0;
-			Page<Libelle> libellePage;
-
-			do {
-				PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
-				libellePage = libelleRepository.findAll(pageable);
-
-				for (Libelle libelle : libellePage.getContent()) {
-					writeCsvLine(writer, libelle.getLibelleOriginal(), libelle.getId());
-				}
-
-				page++;
-			} while (libellePage.hasNext());
-
-			writer.flush();
-		} catch (IOException e) {
-			throw new RuntimeException("Failed to write normalized Libelle file", e);
-		}
+		normalizeEntities(libelleRepository::findAll, Libelle::getLibelleOriginal, Libelle::getId, LIBELLE_OUT);
 	}
 
 
@@ -83,31 +62,7 @@ public class NormalizeService {
 	 * csv file format: id;normalized_libelle;word_count
 	 */
 	public void normalizeLibelleExtra() {
-		Path out = Paths.get(LIBELLE_EXTRA_OUT);
-
-		try (BufferedWriter writer = Files.newBufferedWriter(out, StandardCharsets.UTF_8,
-				StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-
-			writeCsvHeader(writer, "id;normalized_libelle;word_count");
-
-			int page = 0;
-			Page<LibelleExtra> libellePage;
-
-			do {
-				PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
-				libellePage = libelleExtraRepository.findAll(pageable);
-
-				for (LibelleExtra libelle : libellePage.getContent()) {
-					writeCsvLine(writer, libelle.getLibelleOriginal(), libelle.getId());
-				}
-
-				page++;
-			} while (libellePage.hasNext());
-
-			writer.flush();
-		} catch (IOException e) {
-			throw new RuntimeException("Failed to write normalized Libelle Extra file", e);
-		}
+		normalizeEntities(libelleExtraRepository::findAll, LibelleExtra::getLibelleOriginal, LibelleExtra::getId, LIBELLE_EXTRA_OUT);
 	}
 
 	/**
@@ -115,36 +70,41 @@ public class NormalizeService {
 	 * csv file format: id;normalized_sentence;word_count
 	 */
 	public void normalizeContentEditorial() {
-		Path out = Paths.get(CONT_EDITORIAL_OUT);
+		normalizeEntities(contentEditorialSentenceRepository::findAll, ContEditorialSentence::getSentence,
+				ContEditorialSentence::getId, CONT_EDITORIAL_OUT);
+	}
+
+	// Generic pager + writer for any entity type that exposes a sentence/string and id
+	private <T> void normalizeEntities(Function<PageRequest, Page<T>> pageFetcher, Function<T, String> sentenceGetter,
+									   Function<T, Integer> idGetter, String outPath) {
+		Path out = Paths.get(outPath);
 
 		try (BufferedWriter writer = Files.newBufferedWriter(out, StandardCharsets.UTF_8,
 				StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-
-			writeCsvHeader(writer, "id;normalized_sentence;word_count");
+			writeCsvHeader(writer);
 
 			int page = 0;
-			Page<ContEditorialSentence> contentEditorialServicePage;
+			Page<T> pageResp;
 
 			do {
 				PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
-				contentEditorialServicePage = contentEditorialSentenceRepository.findAll(pageable);
+				pageResp = pageFetcher.apply(pageable);
 
-				for (ContEditorialSentence contEditorialSentence : contentEditorialServicePage.getContent()) {
-					writeCsvLine(writer, contEditorialSentence.getSentence(), contEditorialSentence.getId());
+				for (T e : pageResp.getContent()) {
+					writeCsvLine(writer, sentenceGetter.apply(e), idGetter.apply(e));
 				}
 
 				page++;
-			} while (contentEditorialServicePage.hasNext());
+			} while (pageResp.hasNext());
 
 			writer.flush();
 		} catch (IOException e) {
-			throw new RuntimeException("Failed to write normalized Content Editorial file", e);
+			throw new RuntimeException("Failed to write normalized file: " + outPath, e);
 		}
 	}
 
-
-	private void writeCsvHeader(BufferedWriter writer, String header) throws IOException {
-		writer.write(header);
+	private void writeCsvHeader(BufferedWriter writer) throws IOException {
+		writer.write(COLUMN_HEADER);
 		writer.newLine();
 	}
 
