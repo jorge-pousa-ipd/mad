@@ -10,7 +10,7 @@ import java.util.List;
 
 @Repository
 public interface NormalizedContEditorialSentenceRepository extends JpaRepository<NormalizedContEditorialSentence, Integer> {
-	@Query("SELECT n.id, n.normalizedSentence FROM NormalizedContEditorialSentence n WHERE n.wordCount > :count")
-	List<NormalizedSentenceDto> findIdAndSentenceWithWordCountGreaterThan(int count);
+	@Query("SELECT n.id, n.normalizedSentence FROM NormalizedContEditorialSentence n WHERE n.wordCount >= :count")
+	List<NormalizedSentenceDto> findIdAndSentenceWithWordCountGreaterThanEqual(int count);
 
 }

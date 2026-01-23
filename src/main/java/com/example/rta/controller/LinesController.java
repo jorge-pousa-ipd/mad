@@ -2,6 +2,7 @@ package com.example.rta.controller;
 
 import com.example.rta.service.NormalizeService;
 import com.example.rta.service.ReportService;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,10 +23,9 @@ public class LinesController {
 		return 0;
 	}
 
-	@PutMapping("/generateSentencesRelationships")
-	public Integer generateSentencesRelationships() {
-		reportService.generateSentencesRelationships();
-
+	@PutMapping("/generateSentencesRelationships/{wordCount}")
+	public Integer generateSentencesRelationships(@PathVariable int wordCount) {
+		reportService.generateSentencesRelationships(wordCount);
 		return 0;
 	}
 

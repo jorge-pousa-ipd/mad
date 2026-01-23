@@ -19,6 +19,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Function;
 
 import static util.Constants.*;
 import static util.ParseXML.parseXml;
@@ -30,7 +31,8 @@ public class ReportService {
 
 	private static final String BLOC_CONTENU_OUT = "bloc_contenu_out.csv";
 	private static final String BLOC_CONTENU_NOT_FOUND = "bloc_contenu_not_found.csv";
-	private static final String OCCURRENCES_OUT = "ocurrences_report.csv";
+	private static final String LIBELLE_MATCHES_OUT = "libelle_matches.csv";
+	private static final String LIBELLE_EXTRA_MATCHES_OUT = "libelle_matches_extra.csv";
 
 	private final Object blocContenuLock = new Object();
 	private final Object blocContenuNotFoundLock = new Object();
@@ -52,63 +54,35 @@ public class ReportService {
 	}
 
 
-	public void generateSentencesRelationships() {
-		List<NormalizedSentenceDto> normalizedContEditorialSentenceList = normalizedContEditorialSentenceRepository.findIdAndSentenceWithWordCountGreaterThan(4);
+	public void generateSentencesRelationships(int wordCount) {
+		List<NormalizedSentenceDto> normalizedContEditorialSentenceList =
+				normalizedContEditorialSentenceRepository.findIdAndSentenceWithWordCountGreaterThanEqual(wordCount);
 
-		Path out = Paths.get(OCCURRENCES_OUT);
+		Path libelleOut = Paths.get(LIBELLE_MATCHES_OUT);
+		Path libelleExtraOut = Paths.get(LIBELLE_EXTRA_MATCHES_OUT);
 
-		try (BufferedWriter writer = Files.newBufferedWriter(out, StandardCharsets.UTF_8,
-				StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+		try (BufferedWriter writerLibelle = Files.newBufferedWriter(libelleOut, StandardCharsets.UTF_8,
+					StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+			 BufferedWriter writerLibelleExtra = Files.newBufferedWriter(libelleExtraOut, StandardCharsets.UTF_8,
+					StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 			 ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()
 		) {
 			// semaphore: limit tasks in flight to avoid unbounded in-memory queueing
 			Semaphore semaphore = new Semaphore(MAX_CONCURRENT_TASKS);
 
-			writer.write("libelleId;occurrences;cont_editorial_ids");
-			writer.newLine();
+			writeHeader(writerLibelle, writerLibelleExtra);
 
-			int page = 0;
-			Page<NormalizedLibelle> normalizedLibellePage;
+			// process NormalizedLibelleExtra
+			processEntities(pageable -> normalizedLibelleExtraRepository.findAllByWordCountGreaterThanEqual(wordCount, pageable),
+					NormalizedLibelleExtra::getNormalizedLibelle, NormalizedLibelleExtra::getId,
+					writerLibelleExtra, normalizedContEditorialSentenceList, exec, semaphore);
 
-			do {
-				PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
-				normalizedLibellePage = normalizedLibelleRepository.findAll(pageable);
+			// process NormalizedLibelle
+			processEntities(pageable -> normalizedLibelleRepository.findAllByWordCountGreaterThanEqual(wordCount, pageable),
+					NormalizedLibelle::getNormalizedLibelle, NormalizedLibelle::getId,
+					writerLibelle, normalizedContEditorialSentenceList, exec, semaphore);
 
-				List<Future<?>> futures = new ArrayList<>();
-
-				for (NormalizedLibelle normalizedLibelle : normalizedLibellePage.getContent()) {
-					semaphore.acquire();
-
-					Future<?> f = exec.submit(() -> {
-						try {
-							String line = countSentenceOccurrences(normalizedLibelle, normalizedContEditorialSentenceList);
-
-							synchronized (writer) {
-								try {
-									writer.write(line);
-									writer.newLine();
-								} catch (IOException e) {
-									throw new RuntimeException(e);
-								}
-							}
-						} finally {
-							// release permit so main thread can submit more tasks
-							semaphore.release();
-						}
-					}, exec);
-					futures.add(f);
-				}
-
-				// wait for all futures of this page to complete before advancing
-				for (Future<?> future : futures) {
-					future.get();
-				}
-
-				page++;
-				writer.flush();
-			} while (normalizedLibellePage.hasNext());
-
-			// shutdown and wait
+			// shutdown executor
 			exec.shutdown();
 
 		} catch (Exception e) {
@@ -116,10 +90,65 @@ public class ReportService {
 		}
 	}
 
-	private String countSentenceOccurrences(NormalizedLibelle normalizedLibelle,
-											List<NormalizedSentenceDto> normalizedContEditorialSentenceList) {
-		String normalizedLibelleSentence = normalizedLibelle.getNormalizedLibelle();
-		if (normalizedLibelleSentence == null) normalizedLibelleSentence = "";
+	private void writeHeader(BufferedWriter writerLibelle, BufferedWriter writerLibelleExtra) throws IOException {
+		writerLibelle.write("libelleId;cont_editorial_id");
+		writerLibelle.newLine();
+		writerLibelleExtra.write("libelleId;cont_editorial_id");
+		writerLibelleExtra.newLine();
+	}
+
+	// Generic processor for paged entities that expose a normalized libelle string and an id
+	private <T> void processEntities(Function<PageRequest, Page<T>> pageFetcher,
+									 Function<T, String> normalizedGetter,
+									 Function<T, Integer> idGetter,
+									 BufferedWriter writer,
+									 List<NormalizedSentenceDto> sentencesList,
+									 ExecutorService exec,
+									 Semaphore semaphore) throws Exception {
+		int page = 0;
+		Page<T> pageResp;
+
+		do {
+			PageRequest pageable = PageRequest.of(page, PAGE_SIZE, Sort.by("id"));
+			pageResp = pageFetcher.apply(pageable);
+
+			List<Future<?>> futures = new ArrayList<>();
+
+			for (T entity : pageResp.getContent()) {
+				semaphore.acquire();
+
+				Future<?> f = exec.submit(() -> {
+					try {
+						String normalized = normalizedGetter.apply(entity);
+						Integer libelleId = idGetter.apply(entity);
+						List<Integer> matchingIds = findSentenceMatches(normalized, sentencesList);
+
+						if (matchingIds != null) {
+							printSentenceRelationships(libelleId, matchingIds, writer);
+						}
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					} finally {
+						// release permit so main thread can submit more tasks
+						semaphore.release();
+					}
+				}, exec);
+				futures.add(f);
+			}
+
+			// wait for all futures of this page to complete before advancing
+			for (Future<?> future : futures) {
+				future.get();
+			}
+
+			page++;
+			writer.flush();
+		} while (pageResp.hasNext());
+	}
+
+	private List<Integer> findSentenceMatches(String normalizedLibelleSentence,
+											  List<NormalizedSentenceDto> normalizedContEditorialSentenceList) {
+		if (normalizedLibelleSentence == null) return null;
 
 		List<NormalizedSentenceDto> matches = new ArrayList<>();
 		for (NormalizedSentenceDto s : normalizedContEditorialSentenceList) {
@@ -128,24 +157,21 @@ public class ReportService {
 			}
 		}
 
-		String ids = removeDuplicateMatchesAndGetIds(matches);
-		int count = ids.isEmpty() ? 0 : ids.split(",").length;
-		return normalizedLibelle.getId() + SEPARATOR + count + SEPARATOR + ids;
+		return removeDuplicatedMatchesAndGetIds(matches);
 	}
 
-	private String removeDuplicateMatchesAndGetIds(List<NormalizedSentenceDto> matches) {
-		if (matches == null || matches.isEmpty()) return "";
+	private List<Integer> removeDuplicatedMatchesAndGetIds(List<NormalizedSentenceDto> matches) {
+		if (matches == null || matches.isEmpty()) return null;
 
 		if (matches.size() == 1) {
-			Integer id = matches.getFirst().id();
-			return id == null ? "" : id.toString();
+			return List.of(matches.getFirst().id());
 		}
 
 		// keep longest-first so that shorter sentences contained in longer ones are excluded
 		matches.sort((a, b) -> Integer.compare(b.normalizedSentence().length(), a.normalizedSentence().length()));
 
-		List<NormalizedSentenceDto> filtered = new ArrayList<>();
-		filtered.add(matches.getFirst()); // add the longest one
+		List<Integer> filtered = new ArrayList<>();
+		filtered.add(matches.getFirst().id()); // add the longest one
 
 		for (int i = 1; i < matches.size(); i++) {
 			boolean contained = false;
@@ -157,16 +183,19 @@ public class ReportService {
 					break;
 				}
 			}
-			if (!contained) filtered.add(candidate);
+			if (!contained) filtered.add(candidate.id());
 		}
 
-		StringBuilder sb = new StringBuilder();
-		for (NormalizedSentenceDto dto : filtered) {
-			if (!sb.isEmpty()) sb.append(",");
-			sb.append(dto.id());
-		}
+		return filtered;
+	}
 
-		return sb.toString();
+	private void printSentenceRelationships(Integer libelleId, List<Integer> matchingIds, BufferedWriter writer) throws IOException {
+		for (Integer matchingId : matchingIds) {
+			synchronized (sentenceRelationshipLock) {
+				writer.write(libelleId + SEPARATOR + matchingId);
+				writer.newLine();
+			}
+		}
 	}
 
 
@@ -268,3 +297,4 @@ public class ReportService {
 		}
 	}
 }
+
